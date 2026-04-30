@@ -13,6 +13,7 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False)
     mot_de_passe = Column(String(255), nullable=False)
     role = Column(Enum("admin", "ingenieur", "technicien", name="role_enum"), default="technicien")
+    discord_id = Column(String(50), unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tests = relationship("Test", back_populates="user")
