@@ -93,3 +93,46 @@ class Solution(Base):
 
     incident = relationship("Incident", back_populates="solutions")
     user = relationship("User", back_populates="solutions")
+
+class AssistantConversation(Base):
+    __tablename__ = "assistant_conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    discord_user_id = Column(String(100), nullable=False)
+    initial_question = Column(Text, nullable=False)
+    rag_context = Column(Text)
+    status = Column(
+        Enum("active", "solved", "closed"),
+        default="active"
+    )
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    conversation_id = Column(
+        Integer,
+        ForeignKey("assistant_conversations.id"),
+        nullable=False
+    )
+
+    role = Column(
+        Enum("user", "assistant"),
+        nullable=False
+    )
+
+    message = Column(Text, nullable=False)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
