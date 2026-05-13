@@ -3,6 +3,7 @@ import json
 
 OPENCLAW_BIN = "/opt/homebrew/bin/openclaw"
 
+
 def ask_openclaw(session_id: str, prompt: str):
     result = subprocess.run(
         [
@@ -19,16 +20,16 @@ def ask_openclaw(session_id: str, prompt: str):
         text=True
     )
 
+    output = result.stdout if result.stdout.strip() else result.stderr
+
     if result.returncode != 0:
         return {
             "success": False,
             "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr
+            "output": output
         }
 
     try:
-        output = result.stdout if result.stdout.strip() else result.stderr
         data = json.loads(output)
 
         text = ""

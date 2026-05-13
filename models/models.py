@@ -99,6 +99,7 @@ class AssistantConversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     discord_user_id = Column(String(100), nullable=False)
+    incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=True)
     initial_question = Column(Text, nullable=False)
     rag_context = Column(Text)
     status = Column(
