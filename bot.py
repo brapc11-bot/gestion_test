@@ -1,7 +1,7 @@
 import discord
 import requests
 
-TOKEN = " MTUwMTIzMTIwODg1NDcyMDUzMg.Gjj6TS.x3yQJUzAxUXFTYSFp-S_S0wXXW6_LlC-vZIPYg"
+TOKEN = "MTUwMTIzMTIwODg1NDcyMDUzMg.Gjj6TS.x3yQJUzAxUXFTYSFp-S_S0wXXW6_LlC-vZIPYg"
 
 API_URL = "http://127.0.0.1:8000/assistant/chat"
 
@@ -35,18 +35,17 @@ async def on_message(message):
                 "user_id": str(message.author.id),
                 "message": query
             },
-            timeout=180
+            timeout=150
         )
 
         data = response.json()
-
 
         reply = data.get("response", "")
 
         if not reply:
             reply = "Erreur assistant: " + str(data)
 
-        chunks = [reply[i:i+1900] for i in range(0, len(reply), 1900)]
+        chunks = [reply[i:i + 1900] for i in range(0, len(reply), 1900)]
 
         for chunk in chunks:
             await message.channel.send(chunk)

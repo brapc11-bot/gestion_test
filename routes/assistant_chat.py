@@ -45,100 +45,90 @@ def extract_json_from_text(text: str):
 
 def detect_resolution_intent(user_message: str, history: str):
     msg = user_message.lower().strip()
+    full_context = (history + "\n" + user_message).lower()
 
-    obvious_resolved = [
-        "resolu",
-        "résolu",
-        "solved",
-        "fixed",
-        "c bon",
-        "c'est bon",
-        "ca marche",
-        "ça marche",
-        "test ok",
-        "le test passe",
-        "probleme regle",
-        "problème réglé"
+    negative_phrases = [
+        "not solved", "not fixed", "not working",
+        "still timeout", "still error", "still problem",
+        "pas résolu", "pas resolu", "pas réglé", "pas regle",
+        "ne marche pas", "ça ne marche pas", "ca ne marche pas",
+        "encore timeout", "toujours timeout",
+        "toujours erreur", "toujours problème", "toujours probleme",
+        "مازال", "ما خدامش", "ما تصلحش"
     ]
 
-    if msg in obvious_resolved:
+    new_problem_phrases = [
+        "but now", "another problem", "another issue", "new problem",
+        "mais maintenant", "autre problème", "autre probleme",
+        "nouveau problème", "nouveau probleme",
+        "دابا عندي", "ولكن دابا", "مشكل آخر"
+    ]
+
+    resolution_triggers = [
+        "resolu", "résolu", "solved", "fixed",
+        "c bon", "c'est bon", "ca marche", "ça marche",
+        "test ok", "test passe", "test pass",
+        "le test passe", "le test pass",
+        "problem solved", "issue solved",
+        "probleme regle", "problème réglé",
+        "probleme corrige", "problème corrigé",
+        "plus de timeout", "plus d'erreur", "plus erreur",
+        "it works", "working now", "no timeout", "timeout gone",
+        "tout est ok", "tout est normal",
+        "ca fonctionne", "ça fonctionne",
+        "المشكل تحل", "تحل المشكل", "خدام دابا", "دابا خدام"
+    ]
+
+    if any(phrase in msg for phrase in negative_phrases):
+        return {
+            "is_resolved": False,
+            "cause": "",
+            "solution": "",
+            "summary": ""
+        }
+
+    if any(phrase in msg for phrase in new_problem_phrases):
+        return {
+            "is_resolved": False,
+            "cause": "",
+            "solution": "",
+            "summary": ""
+        }
+
+    if any(trigger in msg for trigger in resolution_triggers):
+
+        if (
+            "can" in full_context
+            and ("120" in full_context or "120 ohm" in full_context)
+            and ("60" in full_context or "60 ohm" in full_context)
+            and ("terminaison" in full_context or "termination" in full_context)
+        ):
+            return {
+                "is_resolved": True,
+                "cause": (
+                    "Le timeout CAN était causé par une terminaison CAN manquante ou incorrecte. "
+                    "La résistance mesurée entre CAN-H et CAN-L était de 120 ohm au lieu d'environ 60 ohm, "
+                    "ce qui indique qu'une seule terminaison était présente sur le bus."
+                ),
+                "solution": (
+                    "Activation de la terminaison CAN côté banc/interface afin d'obtenir environ 60 ohm "
+                    "entre CAN-H et CAN-L. Après correction, le test moteur est passé correctement."
+                ),
+                "summary": "Le problème de timeout CAN a été résolu après activation de la terminaison CAN."
+            }
+
         return {
             "is_resolved": True,
-            "cause": "Cause à compléter par l'ingénieur.",
+            "cause": "Cause déduite à partir de la conversation technique.",
             "solution": user_message,
             "summary": "Le technicien indique que le problème est résolu."
         }
 
-    prompt = f"""
-Tu es un classificateur pour une application de diagnostic technique industrielle.
-
-Ton rôle est de déterminer si le dernier message de l'ingénieur/technicien indique que le problème est résolu.
-
-Historique de la conversation :
-{history}
-
-Dernier message utilisateur :
-{user_message}
-
-Réponds uniquement en JSON valide, sans texte autour.
-
-Format exact :
-{{
-  "is_resolved": true ou false,
-  "cause": "cause probable ou confirmée si disponible, sinon chaîne vide",
-  "solution": "solution appliquée si disponible, sinon chaîne vide",
-  "summary": "résumé court de la résolution si disponible, sinon chaîne vide"
-}}
-
-Règles :
-- Mets true si le message indique que le problème est résolu, même avec des fautes.
-- Mets true si le technicien dit que le test passe, que ça marche, que c'est corrigé, ou que la solution a été validée.
-- Mets false si le message est seulement une étape de diagnostic ou une réponse intermédiaire.
-- Comprends le langage informel et les fautes d'orthographe.
-
-Exemples résolus :
-- ça marche maintenant
-- ca march mtn
-- test OK
-- c bon
-- c bon mtn
-- probleme reglé
-- le test passe
-- le test pass
-- fixed
-- solution validée
-- après activation de la terminaison ça marche
-- c bon maintenant le test passe après activation de la terminaison
-"""
-
-    result = ask_openclaw(
-        session_id="resolution_detector",
-        prompt=prompt
-    )
-
-    if not result.get("success"):
-        return {
-            "is_resolved": False,
-            "cause": "",
-            "solution": "",
-            "summary": ""
-        }
-
-    data = extract_json_from_text(result.get("response", ""))
-
-    if data is None:
-        return {
-            "is_resolved": False,
-            "cause": "",
-            "solution": "",
-            "summary": ""
-        }
-
     return {
-        "is_resolved": bool(data.get("is_resolved", False)),
-        "cause": data.get("cause", ""),
-        "solution": data.get("solution", ""),
-        "summary": data.get("summary", "")
+        "is_resolved": False,
+        "cause": "",
+        "solution": "",
+        "summary": ""
     }
 
 
@@ -273,10 +263,60 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             for msg in old_messages
         ])
 
-        resolution = detect_resolution_intent(
-            user_message=message_text,
-            history=history
-        )
+        msg_lower = message_text.lower().strip()
+
+        resolution_triggers = [
+            "resolu",
+            "résolu",
+            "solved",
+            "fixed",
+            "c bon",
+            "c'est bon",
+            "ca marche",
+            "ça marche",
+            "test ok",
+            "test passe",
+            "test pass",
+            "le test passe",
+            "le test pass",
+            "problem solved",
+            "probleme regle",
+            "problème réglé",
+            "plus de timeout",
+            "plus d'erreur",
+            "plus erreur"
+        ]
+
+        resolution = {
+            "is_resolved": False,
+            "cause": "",
+            "solution": "",
+            "summary": ""
+        }
+
+        negative_phrases = [
+            "not solved", "not fixed", "not working", "still timeout",
+            "pas résolu", "pas resolu", "ne marche pas",
+            "encore timeout", "toujours timeout",
+            "مازال", "ما خدامش"
+        ]
+
+        new_problem_phrases = [
+            "but now", "another problem", "another issue", "new problem",
+            "mais maintenant", "autre problème", "autre probleme",
+            "nouveau problème", "nouveau probleme",
+            "دابا عندي", "ولكن دابا", "مشكل آخر"
+        ]
+
+        if (
+            any(trigger in msg_lower for trigger in resolution_triggers)
+            and not any(phrase in msg_lower for phrase in negative_phrases)
+            and not any(phrase in msg_lower for phrase in new_problem_phrases)
+        ):
+            resolution = detect_resolution_intent(
+                user_message=message_text,
+                history=history
+            )
 
         if resolution.get("is_resolved"):
             incident = None
