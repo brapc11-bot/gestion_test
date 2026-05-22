@@ -1,5 +1,8 @@
 import discord
-import requests
+import aiohttp
+from dotenv import load_dotenv
+
+load_dotenv()
 
 TOKEN = "MTUwMTIzMTIwODg1NDcyMDUzMg.Gjj6TS.x3yQJUzAxUXFTYSFp-S_S0wXXW6_LlC-vZIPYg"
 
@@ -26,19 +29,33 @@ async def on_message(message):
     if not query:
         return
 
+    await message.channel.send("Analyse en cours...")
+
+    payload = {
+        "user_id": str(message.author.id),
+        "message": query
+    }
+
     try:
-        await message.channel.send("Analyse en cours...")
+        timeout = aiohttp.ClientTimeout(total=240)
 
-        response = requests.post(
-            API_URL,
-            json={
-                "user_id": str(message.author.id),
-                "message": query
-            },
-            timeout=150
-        )
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(API_URL, json=payload) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    await message.channel.send(
+                        f"Erreur backend {response.status}:\n{error_text[:1000]}"
+                    )
+                    return
 
-        data = response.json()
+                try:
+                    data = await response.json()
+                except Exception:
+                    raw_text = await response.text()
+                    await message.channel.send(
+                        f"Erreur backend: réponse non JSON.\n{raw_text[:1000]}"
+                    )
+                    return
 
         reply = data.get("response", "")
 

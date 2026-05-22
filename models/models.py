@@ -54,6 +54,8 @@ class Incident(Base):
     date_creation = Column(DateTime, default=datetime.utcnow)
     id_test = Column(Integer, ForeignKey("tests.id"))
     id_user = Column(Integer, ForeignKey("users.id"))
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+
 
     test = relationship("Test", back_populates="incidents")
     user = relationship("User", back_populates="incidents")
@@ -137,3 +139,11 @@ class AssistantMessage(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nom = Column(String(100), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
