@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = "MTUwMTIzMTIwODg1NDcyMDUzMg.Gjj6TS.x3yQJUzAxUXFTYSFp-S_S0wXXW6_LlC-vZIPYg"
+TOKEN = "your token"
 
 API_URL = "http://127.0.0.1:8000/assistant/chat"
 
