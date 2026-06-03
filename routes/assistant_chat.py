@@ -713,10 +713,15 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
         }
 
     # Find active conversation for this Discord user
-    conversation = db.query(AssistantConversation).filter(
-        AssistantConversation.discord_user_id == request.user_id,
-        AssistantConversation.status == "active"
-    ).first()
+    conversation = (
+        db.query(AssistantConversation)
+        .filter(
+            AssistantConversation.discord_user_id == request.user_id,
+            AssistantConversation.status == "active"
+        )
+        .order_by(AssistantConversation.updated_at.desc())
+        .first()
+    )
 
     # -----------------------------------------------------
     # CASE 1: Existing active conversation
@@ -727,16 +732,20 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
         old_messages = db.query(AssistantMessage).filter(
             AssistantMessage.conversation_id == conversation.id
         ).order_by(AssistantMessage.created_at.asc()).all()
+        
+        if not old_messages:
+            old_messages = []
 
         history = "\n\n".join([
             f"{msg.role.upper()} : {msg.message}"
             for msg in old_messages
+            if msg.message
         ])
 
         user_history = "\n\n".join([
             msg.message
             for msg in old_messages
-            if msg.role == "user"
+            if msg.role == "user" and msg.message
         ])        
 
         msg_lower = message_text.lower().strip()
@@ -921,6 +930,8 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             )
             db.add(assistant_msg)
 
+            conversation.updated_at = datetime.utcnow() 
+
             db.commit()
 
             if incident is not None:
@@ -948,7 +959,24 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
     # -----------------------------------------------------
 
     if conversation is None:
+
+        # ==============================
+        # LEVEL 1: Normalize input
+        # ==============================
+
         msg = message_text.lower().strip()
+
+        def is_new_problem(msg: str) -> bool:
+            keywords = [
+                "new problem", "another problem", "another issue",
+                "autre problème", "autre souci", "nouveau problème",
+                "nouveau souci", "مشكل آخر", "دابا عندي"
+            ]
+            return any(k in msg for k in keywords)
+
+        # ==============================
+        # LEVEL 2: Non-problem messages
+        # ==============================
 
         not_problem_words = [
             "ok", "oui", "non", "merci", "thanks", "thank you",
@@ -957,6 +985,16 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             "test ok", "le test passe",
             "safi", "daba safi"
         ]
+
+        if msg in not_problem_words:
+            return {
+                "success": False,
+                "response": no_active_conversation_response(message_text)
+            }
+
+        # ==============================
+        # LEVEL 3: Technical filtering
+        # ==============================
 
         technical_words = [
             # General
@@ -981,17 +1019,22 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             "kay", "dyal"
         ]
 
-        if msg in not_problem_words:
-            return {
-                "success": False,
-                "response": no_active_conversation_response(message_text)
-            }
-
         if not any(word in msg for word in technical_words):
             return {
                 "success": False,
                 "response": unclear_problem_response(message_text)
             }
+
+        # ==============================
+        # LEVEL 4: New problem detection
+        # ==============================
+
+        if is_new_problem(msg):
+            return {
+                "success": False,
+                "response": unclear_problem_response(message_text)
+            }
+
 
     # -----------------------------------------------------
     # RAG search
