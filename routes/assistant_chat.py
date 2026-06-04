@@ -8,6 +8,7 @@ from rag.rag_service import search_similar_incidents, add_solved_incident_to_chr
 from services.openclaw_service import ask_openclaw
 import json
 import re
+from datetime import datetime
 
 router = APIRouter()
 
@@ -710,6 +711,31 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
         return {
             "success": False,
             "response": empty_message_response(request.message)
+        }
+
+    # ---------------------------------------------------------
+    # GLOBAL NORMALIZATION
+    # ---------------------------------------------------------
+
+    msg_lower = message_text.lower().strip()
+
+    # ---------------------------------------------------------
+    # GLOBAL COMMAND: CANCEL
+    # Must be checked before CASE 1 and CASE 2
+    # ---------------------------------------------------------
+
+    cancel_words = [
+        "cancel", "stop", "abort",
+        "annuler", "annule",
+        "إلغاء", "الغاء",
+        "safi", "stoppe", "stopper"
+    ]
+
+    if any(word in msg_lower for word in cancel_words):
+        return {
+            "success": True,
+            "cancelled": True,
+            "response": "Request cancelled. No data was saved."
         }
 
     # Find active conversation for this Discord user

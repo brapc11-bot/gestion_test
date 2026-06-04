@@ -1,10 +1,11 @@
+import os
 import discord
 import aiohttp
 from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = "your token"
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 API_URL = "http://127.0.0.1:8000/assistant/chat"
 
@@ -70,5 +71,7 @@ async def on_message(message):
     except Exception as e:
         await message.channel.send(f"Erreur lors de l'analyse: {str(e)}")
 
+print("Token loaded:", TOKEN is not None)
+print("Token length:", len(TOKEN) if TOKEN else 0)
 
 client.run(TOKEN)
