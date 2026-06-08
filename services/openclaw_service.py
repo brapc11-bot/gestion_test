@@ -4,7 +4,10 @@ import json
 OPENCLAW_BIN = "/opt/homebrew/bin/openclaw"
 
 
-def ask_openclaw(session_id: str, prompt: str, timeout_seconds: int = 120):
+def ask_openclaw(session_id: str, prompt: str, timeout_seconds: int = 300):
+    print("OPENCLAW START")
+    print("SESSION:", session_id)
+
     try:
         result = subprocess.run(
             [
@@ -22,7 +25,16 @@ def ask_openclaw(session_id: str, prompt: str, timeout_seconds: int = 120):
             timeout=timeout_seconds
         )
 
+        print("OPENCLAW FINISHED")
+        print("SESSION:", session_id)
+        print("RETURNCODE:", result.returncode)
+
+
     except subprocess.TimeoutExpired:
+
+        print("OPENCLAW TIMEOUT")
+        print("SESSION:", session_id)
+
         return {
             "success": False,
             "response": "OpenClaw a pris trop de temps pour répondre. Réessayez avec un message plus court ou relancez la demande.",
@@ -30,6 +42,10 @@ def ask_openclaw(session_id: str, prompt: str, timeout_seconds: int = 120):
         }
 
     output = result.stdout if result.stdout.strip() else result.stderr
+    
+    print("OPENCLAW OUTPUT:")
+    print(output[:1000])
+        
 
     if result.returncode != 0:
         return {
@@ -53,6 +69,9 @@ def ask_openclaw(session_id: str, prompt: str, timeout_seconds: int = 120):
         }
 
     except Exception as e:
+        print("OPENCLAW RAW OUTPUT:")
+        print(output)
+
         return {
             "success": False,
             "response": "Erreur lors de la lecture de la réponse OpenClaw.",

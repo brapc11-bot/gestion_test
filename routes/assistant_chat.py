@@ -698,6 +698,126 @@ def get_or_create_category_by_name(db: Session, category_name: str, category_des
 
     return category
 
+def detect_user_intent_with_openclaw(
+    current_message: str,
+    conversation_history: str = ""
+):
+    """
+    AI intent classifier.
+    OpenClaw decides what the user wants.
+    """
+
+    prompt = f"""
+You are an intent classifier.
+
+Conversation history:
+{conversation_history}
+
+Latest user message:
+{current_message}
+
+Choose ONLY one intent from:
+
+- continue
+- resolved
+- cancel
+- new_problem
+
+Definitions:
+
+continue:
+The user is continuing the current diagnosis.
+
+resolved:
+The user confirms the problem is fixed, solved, working, or can be closed
+
+Examples:
+- it is solved now
+- solved
+- fixed
+- it works now
+- problem solved
+- issue solved
+- test passed
+- c'est bon
+- ça marche
+- résolu
+- safi
+- khdam daba
+
+Always choose "resolved" if the user confirms the issue is fixed or working.
+
+
+cancel:
+The user wants to stop, abandon, ignore, or cancel the current diagnosis
+
+Examples:
+- cancel
+- stop
+- forget this
+- ignore this
+- never mind
+- annuler
+- laisse tomber
+
+Always choose "cancel" if the user wants to stop the diagnosis.
+
+
+new_problem:
+The user introduces a different problem or another issue
+
+Examples:
+- another issue
+- new problem
+- but now I have a LIN timeout
+- different problem
+
+Choose "new_problem" only when a different issue is introduced.
+
+
+Return ONLY valid JSON.
+
+Example:
+
+{{
+  "intent": "continue"
+}}
+"""
+
+    result = ask_openclaw(
+        session_id="intent_classifier_v2",
+        prompt=prompt
+    )
+   
+    print("INTENT RAW RESPONSE:")
+    print(result.get("response",""))
+
+    if not result.get("success"):
+        return {"intent": "continue"}
+
+    data = extract_json_from_text(
+        result.get("response", "")
+    )
+
+    if not data:
+        return {"intent": "continue"}
+
+    intent = data.get("intent", "continue")
+
+    allowed = [
+        "continue",
+        "resolved",
+        "cancel",
+        "new_problem"
+    ]
+
+    if intent not in allowed:
+        intent = "continue"
+
+    return {
+        "intent": intent
+    }
+
 
 # ---------------------------------------------------------
 # MAIN CHAT ROUTE
@@ -714,28 +834,39 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
         }
 
     # ---------------------------------------------------------
-    # GLOBAL NORMALIZATION
+    # GLOBAL NORMALIZATION (BEFORE AI DECISION HELPERS)
     # ---------------------------------------------------------
 
     msg_lower = message_text.lower().strip()
 
     # ---------------------------------------------------------
-    # GLOBAL COMMAND: CANCEL
-    # Must be checked before CASE 1 and CASE 2
+    # OPENCLAW INTENT (PRIMARY DECISION ENGINE)
     # ---------------------------------------------------------
 
-    cancel_words = [
-        "cancel", "stop", "abort",
-        "annuler", "annule",
-        "إلغاء", "الغاء",
-        "safi", "stoppe", "stopper"
-    ]
+    try:
+        intent_result = detect_user_intent_with_openclaw(message_text)
 
-    if any(word in msg_lower for word in cancel_words):
+        if isinstance(intent_result, dict):
+            intent = intent_result.get("intent")
+        else:
+            intent = intent_result
+
+        print("DEBUG OPENCLAW INTENT:", intent)
+
+    except Exception as e:
+        print("OPENCLAW INTENT ERROR:", str(e))
+        intent = None
+
+    if intent == "cancel":
+
         return {
+
             "success": True,
+
             "cancelled": True,
+
             "response": "Request cancelled. No data was saved."
+
         }
 
     # Find active conversation for this Discord user
@@ -748,6 +879,12 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
         .order_by(AssistantConversation.updated_at.desc())
         .first()
     )
+
+    print(
+        f"INTENT={intent} | "
+        f"ACTIVE_CONVERSATION={'YES' if conversation else 'NO'}"
+    )
+
 
     # -----------------------------------------------------
     # CASE 1: Existing active conversation
@@ -857,15 +994,38 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             "summary": ""
         }
 
-        if (
+        # -----------------------------------------------------
+        # OPENCLAW PRIORITY
+        # -----------------------------------------------------
+
+        if intent == "resolved":
+
+            print("OPENCLAW RESOLVED DETECTED")
+
+            resolution["is_resolved"] = True
+
+        # -----------------------------------------------------
+        # FALLBACK (OLD SYSTEM)
+        # -----------------------------------------------------
+
+        elif (
+
             any(trigger in msg_lower for trigger in resolution_triggers)
+
             and not any(phrase in msg_lower for phrase in negative_phrases)
+
             and not any(phrase in msg_lower for phrase in new_problem_phrases)
+
         ):
+
             resolution = detect_resolution_intent(
+
                 user_message=message_text,
+
                 history=history
+
             )
+
 
         if resolution.get("is_resolved"):
             incident = None
@@ -1045,11 +1205,7 @@ def assistant_chat(request: ChatRequest, db: Session = Depends(get_db)):
             "kay", "dyal"
         ]
 
-        if not any(word in msg for word in technical_words):
-            return {
-                "success": False,
-                "response": unclear_problem_response(message_text)
-            }
+        print("TECHNICAL FILTER SKIPPED - OPENCLAW WILL DECIDE")
 
         # ==============================
         # LEVEL 4: New problem detection
@@ -1162,7 +1318,11 @@ Internal case relevance rule:
 - If the candidate case is about alimentation/tension but the user problem is about pressure leak/étanchéité, ignore it.
 - If the candidate case is about CAN but the user problem is about LIN, ignore it.
 - If the candidate case is about LIN but the user problem is about alimentation, ignore it.
-- If no candidate is truly relevant, say in the user's language that no validated internal solution was found, then propose one diagnostic path based on technical reasoning.
+- If no candidate is truly relevant, ignore all candidate cases.
+- Do not mention internal cases, ChromaDB, the knowledge base, or the absence of matches.
+- Continue with normal technical reasoning as an experienced engineer.
+- Ask diagnostic questions and propose the next troubleshooting step.
+
 
 Conversation behavior:
 - If this is a follow-up message, do not repeat whether an internal similar case was found.
